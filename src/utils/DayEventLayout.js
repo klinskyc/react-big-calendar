@@ -1,200 +1,246 @@
-import sortBy from 'lodash/sortBy'
+'use strict';
 
-class Event {
-  constructor(data, { accessors, slotMetrics }) {
-    const {
-      start,
-      startDate,
-      end,
-      endDate,
-      top,
-      height,
-    } = slotMetrics.getRange(accessors.start(data), accessors.end(data))
+exports.__esModule = true;
+exports.getStyledEvents = undefined;
 
-    this.start = start
-    this.end = end
-    this.startMs = +startDate
-    this.endMs = +endDate
-    this.top = top
-    this.height = height
-    this.data = data
+var _createClass = function () { function defineProperties(target, props) { for (var i = 0; i < props.length; i++) { var descriptor = props[i]; descriptor.enumerable = descriptor.enumerable || false; descriptor.configurable = true; if ("value" in descriptor) descriptor.writable = true; Object.defineProperty(target, descriptor.key, descriptor); } } return function (Constructor, protoProps, staticProps) { if (protoProps) defineProperties(Constructor.prototype, protoProps); if (staticProps) defineProperties(Constructor, staticProps); return Constructor; }; }();
+
+var _sortBy = require('lodash/sortBy');
+
+var _sortBy2 = _interopRequireDefault(_sortBy);
+
+var _accessors = require('./accessors');
+
+function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+
+function _objectWithoutProperties(obj, keys) { var target = {}; for (var i in obj) { if (keys.indexOf(i) >= 0) continue; if (!Object.prototype.hasOwnProperty.call(obj, i)) continue; target[i] = obj[i]; } return target; }
+
+function _classCallCheck(instance, Constructor) { if (!(instance instanceof Constructor)) { throw new TypeError("Cannot call a class as a function"); } }
+
+var Event = function () {
+  function Event(data, _ref) {
+    var startAccessor = _ref.startAccessor,
+        endAccessor = _ref.endAccessor,
+        slotMetrics = _ref.slotMetrics;
+
+    _classCallCheck(this, Event);
+
+    var _slotMetrics$getRange = slotMetrics.getRange((0, _accessors.accessor)(data, startAccessor), (0, _accessors.accessor)(data, endAccessor)),
+        start = _slotMetrics$getRange.start,
+        startDate = _slotMetrics$getRange.startDate,
+        end = _slotMetrics$getRange.end,
+        endDate = _slotMetrics$getRange.endDate,
+        top = _slotMetrics$getRange.top,
+        height = _slotMetrics$getRange.height;
+
+    this.start = start;
+    this.end = end;
+    this.startMs = +startDate;
+    this.endMs = +endDate;
+    this.top = top;
+    this.height = height;
+    this.data = data;
   }
 
   /**
    * The event's width without any overlap.
    */
-  get _width() {
-    // The container event's width is determined by the maximum number of
-    // events in any of its rows.
-    if (this.rows) {
-      const columns =
-        this.rows.reduce(
-          (max, row) => Math.max(max, row.leaves.length + 1), // add itself
-          0
-        ) + 1 // add the container
 
-      return 100 / columns
+
+  _createClass(Event, [{
+    key: '_width',
+    get: function get() {
+      // The container event's width is determined by the maximum number of
+      // events in any of its rows.
+      if (this.rows) {
+        var columns = this.rows.reduce(function (max, row) {
+          return Math.max(max, row.leaves.length + 1);
+        }, // add itself
+        0) + 1; // add the container
+
+        return 100 / columns;
+      }
+
+      var availableWidth = 100 - this.container._width;
+
+      // The row event's width is the space left by the container, divided
+      // among itself and its leaves.
+      if (this.leaves) {
+        return availableWidth / (this.leaves.length + 1);
+      }
+
+      // The leaf event's width is determined by its row's width
+      return this.row._width;
     }
 
-    const availableWidth = 100 - this.container._width
+    /**
+     * The event's calculated width, possibly with extra width added for
+     * overlapping effect.
+     */
 
-    // The row event's width is the space left by the container, divided
-    // among itself and its leaves.
-    if (this.leaves) {
-      return availableWidth / (this.leaves.length + 1)
+  }, {
+    key: 'width',
+    get: function get() {
+      var noOverlap = this._width;
+      var overlap = Math.min(100, this._width * 1.7);
+
+      // Containers can always grow.
+      if (this.rows) {
+        return overlap;
+      }
+
+      // Rows can grow if they have leaves.
+      if (this.leaves) {
+        return this.leaves.length > 0 ? overlap : noOverlap;
+      }
+
+      // Leaves can grow unless they're the last item in a row.
+      var leaves = this.row.leaves;
+
+      var index = leaves.indexOf(this);
+      return index === leaves.length - 1 ? noOverlap : overlap;
     }
+  }, {
+    key: 'xOffset',
+    get: function get() {
+      // Containers have no offset.
+      if (this.rows) return 0;
 
-    // The leaf event's width is determined by its row's width
-    return this.row._width
-  }
+      // Rows always start where their container ends.
+      if (this.leaves) return this.container._width;
 
-  /**
-   * The event's calculated width, possibly with extra width added for
-   * overlapping effect.
-   */
-  get width() {
-    const noOverlap = this._width
-    const overlap = Math.min(100, this._width * 1.7)
+      // Leaves are spread out evenly on the space left by its row.
+      var _row = this.row,
+          leaves = _row.leaves,
+          xOffset = _row.xOffset,
+          _width = _row._width;
 
-    // Containers can always grow.
-    if (this.rows) {
-      return overlap
+      var index = leaves.indexOf(this) + 1;
+      return xOffset + index * _width;
     }
+  }]);
 
-    // Rows can grow if they have leaves.
-    if (this.leaves) {
-      return this.leaves.length > 0 ? overlap : noOverlap
-    }
-
-    // Leaves can grow unless they're the last item in a row.
-    const { leaves } = this.row
-    const index = leaves.indexOf(this)
-    return index === leaves.length - 1 ? noOverlap : overlap
-  }
-
-  get xOffset() {
-    // Containers have no offset.
-    if (this.rows) return 0
-
-    // Rows always start where their container ends.
-    if (this.leaves) return this.container._width
-
-    // Leaves are spread out evenly on the space left by its row.
-    const { leaves, xOffset, _width } = this.row
-    const index = leaves.indexOf(this) + 1
-    return xOffset + index * _width
-  }
-}
+  return Event;
+}();
 
 /**
  * Return true if event a and b is considered to be on the same row.
  */
-function onSameRow(a, b, minimumStartDifference) {
+
+
+function onSameRow(a, b) {
   return (
     // Occupies the same start slot.
-    Math.abs(b.start - a.start) < minimumStartDifference ||
+    Math.abs(b.start - a.start) <= 30 ||
     // A's start slot overlaps with b's end slot.
-    (b.start > a.start && b.start < a.end)
-  )
+    a.start > b.start && a.start < b.end
+  );
 }
 
 function sortByRender(events) {
-  const sortedByTime = sortBy(events, ['startMs', e => -e.endMs])
+  var sortedByTime = (0, _sortBy2.default)(events, ['startMs', function (e) {
+    return -e.endMs;
+  }]);
 
-  const sorted = []
+  var sorted = [];
   while (sortedByTime.length > 0) {
-    const event = sortedByTime.shift()
-    sorted.push(event)
+    var event = sortedByTime.shift();
+    sorted.push(event);
 
-    for (let i = 0; i < sortedByTime.length; i++) {
-      const test = sortedByTime[i]
+    for (var i = 0; i < sortedByTime.length; i++) {
+      var test = sortedByTime[i];
 
       // Still inside this event, look for next.
-      if (event.endMs > test.startMs) continue
+      if (event.endMs > test.startMs) continue;
 
       // We've found the first event of the next event group.
       // If that event is not right next to our current event, we have to
       // move it here.
       if (i > 0) {
-        const event = sortedByTime.splice(i, 1)[0]
-        sorted.push(event)
+        var _event = sortedByTime.splice(i, 1)[0];
+        sorted.push(_event);
       }
 
       // We've already found the next event group, so stop looking.
-      break
+      break;
     }
   }
 
-  return sorted
+  return sorted;
 }
 
-function getStyledEvents({
-  events,
-  minimumStartDifference,
-  slotMetrics,
-  accessors,
-}) {
+function getStyledEvents(_ref2) {
+  var events = _ref2.events,
+      props = _objectWithoutProperties(_ref2, ['events']);
+
   // Create proxy events and order them so that we don't have
   // to fiddle with z-indexes.
-  const proxies = events.map(
-    event => new Event(event, { slotMetrics, accessors })
-  )
-  const eventsInRenderOrder = sortByRender(proxies)
+  var proxies = events.map(function (event) {
+    return new Event(event, props);
+  });
+  var eventsInRenderOrder = sortByRender(proxies);
 
   // Group overlapping events, while keeping order.
   // Every event is always one of: container, row or leaf.
   // Containers can contain rows, and rows can contain leaves.
-  const containerEvents = []
-  for (let i = 0; i < eventsInRenderOrder.length; i++) {
-    const event = eventsInRenderOrder[i]
+  var containerEvents = [];
+
+  var _loop = function _loop(i) {
+    var event = eventsInRenderOrder[i];
 
     // Check if this event can go into a container event.
-    const container = containerEvents.find(
-      c =>
-        c.end > event.start ||
-        Math.abs(event.start - c.start) < minimumStartDifference
-    )
+    var container = containerEvents.find(function (c) {
+      return c.end > event.start || Math.abs(event.start - c.start) < 30;
+    });
 
     // Couldn't find a container — that means this event is a container.
     if (!container) {
-      event.rows = []
-      containerEvents.push(event)
-      continue
+      event.rows = [];
+      containerEvents.push(event);
+      return 'continue';
     }
 
     // Found a container for the event.
-    event.container = container
+    event.container = container;
 
     // Check if the event can be placed in an existing row.
     // Start looking from behind.
-    let row = null
-    for (let j = container.rows.length - 1; !row && j >= 0; j--) {
-      if (onSameRow(container.rows[j], event, minimumStartDifference)) {
-        row = container.rows[j]
+    var row = null;
+    for (var j = container.rows.length - 1; !row && j >= 0; j--) {
+      if (onSameRow(container.rows[j], event)) {
+        row = container.rows[j];
       }
     }
 
     if (row) {
       // Found a row, so add it.
-      row.leaves.push(event)
-      event.row = row
+      row.leaves.push(event);
+      event.row = row;
     } else {
       // Couldn't find a row – that means this event is a row.
-      event.leaves = []
-      container.rows.push(event)
+      event.leaves = [];
+      container.rows.push(event);
     }
+  };
+
+  for (var i = 0; i < eventsInRenderOrder.length; i++) {
+    var _ret = _loop(i);
+
+    if (_ret === 'continue') continue;
   }
 
   // Return the original events, along with their styles.
-  return eventsInRenderOrder.map(event => ({
-    event: event.data,
-    style: {
-      top: event.top,
-      height: event.height,
-      width: event.width,
-      xOffset: event.xOffset,
-    },
-  }))
+  return eventsInRenderOrder.map(function (event) {
+    return {
+      event: event.data,
+      style: {
+        top: event.top,
+        height: event.height,
+        width: event.width,
+        xOffset: event.xOffset
+      }
+    };
+  });
 }
 
-export { getStyledEvents }
+exports.getStyledEvents = getStyledEvents;
